@@ -15,8 +15,7 @@ type User struct {
 }
 
 var (
-	storage      = make(map[string]string)
-	loginStorage = make(map[string]string)
+	storage = make(map[string]string)
 )
 
 func registerHandler(w http.ResponseWriter, r *http.Request) {
@@ -52,12 +51,7 @@ func hashMap(data map[string]string) string {
 	}
 	sort.Strings(keys)
 
-	combined := ""
-	for _, k := range keys {
-		combined += fmt.Sprintf("%s=%s;", k, data[k])
-	}
-
-	hash := sha256.Sum256([]byte(combined))
+	hash := sha256.Sum256([]byte(keys[0] + data["login"] + data["password"]))
 	return hex.EncodeToString(hash[:])
 }
 
@@ -87,13 +81,43 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{
 			"status": "success",
 			"msg":    "Вы успешно вошли!",
+			"key":    hashLog,
 		})
 	} else {
 		http.Error(w, "Неверный логин или пароль", http.StatusUnauthorized)
 	}
 }
 
+func infoHandler(w http.ResponseWriter, r *http.Request) {
+	key := r.Header.Get("Key")
+	if key == "" {
+		http.Error(w, "Введите корректный ключ, поле не может быть пустым", http.StatusUnauthorized)
+		return
+	}
+
+	var foundUser string
+	for login, storedHash := range storage {
+		if storedHash == key {
+			foundUser = login
+			break
+		}
+	}
+
+	if foundUser == "" {
+		http.Error(w, "Неправильный или несуществующий ключ", http.StatusForbidden)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"Login": foundUser,
+		"Key":   key,
+		"Info":  "Ключ действителен. Пользователь найден.",
+	})
+}
+
 func main() {
+	http.HandleFunc("/info", infoHandler)
 	http.HandleFunc("/register", registerHandler)
 	http.HandleFunc("/login", loginHandler)
 
