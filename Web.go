@@ -28,6 +28,7 @@ type Users struct {
 	LastName  string    `json:"last_name"`
 	BirthDate time.Time `json:"birth_date"`
 	CreatedAt time.Time `json:"created_at"`
+	Money     int       `json:"money"`
 }
 
 type LoginReq struct {
@@ -92,6 +93,16 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		http.Error(w, "Ошибка при добавлении в БД: "+err.Error(), 500)
+		return
+	}
+
+	_, err = db.Exec(
+		context.Background(),
+		`INSERT INTO wallets (user_id) VALUES ($1)`,
+		id,
+	)
+	if err != nil {
+		http.Error(w, "Ошибка создания кошелька", 500)
 		return
 	}
 
@@ -160,7 +171,7 @@ func usersHandler(w http.ResponseWriter, r *http.Request) {
 
 	var users []Users
 
-	rows, err := db.Query(context.Background(), `SELECT id, first_name, last_name, birth_date, created_at FROM users`)
+	rows, err := db.Query(context.Background(), `SELECT id, first_name, last_name, birth_date, created_at, money FROM users`)
 	if err != nil {
 		http.Error(w, "Ошибка при запросе к БД: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -169,7 +180,7 @@ func usersHandler(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var u Users
-		err := rows.Scan(&u.Id, &u.FirstName, &u.LastName, &u.BirthDate, &u.CreatedAt)
+		err := rows.Scan(&u.Id, &u.FirstName, &u.LastName, &u.BirthDate, &u.CreatedAt, &u.Money)
 		if err != nil {
 			http.Error(w, "Ошибка при чтении данных: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -181,6 +192,56 @@ func usersHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(users); err != nil {
 		http.Error(w, "Ошибка при кодировании JSON: "+err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func insertMoneyHandler(w http.ResponseWriter, r *http.Request) {
+	claims, err := verifyJWT(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userIDFloat, ok := claims["user_id"].(float64)
+	if !ok {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	userID := int(userIDFloat)
+
+	type Req struct {
+		Amount int `json:"amount"`
+	}
+
+	var req Req
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Bad JSON", http.StatusBadRequest)
+		return
+	}
+
+	if req.Amount <= 0 {
+		http.Error(w, "Invalid amount", http.StatusBadRequest)
+		return
+	}
+
+	var balance int
+	err = db.QueryRow(
+		context.Background(),
+		`UPDATE wallets
+		 SET balance = balance + $1
+		 WHERE user_id = $2
+		 RETURNING balance`,
+		req.Amount, userID,
+	).Scan(&balance)
+
+	if err != nil {
+		http.Error(w, "DB error", http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]any{
+		"status":  "ok",
+		"balance": balance,
+	})
 }
 
 func main() {
@@ -217,6 +278,7 @@ func main() {
 	http.HandleFunc("/register", registerHandler)
 	http.HandleFunc("/users", usersHandler)
 	http.HandleFunc("/login", loginHandler)
+	http.HandleFunc("/wallet/deposit", insertMoneyHandler)
 
 	fmt.Println("Server started at :8000")
 	if err := http.ListenAndServe(":8000", nil); err != nil {
