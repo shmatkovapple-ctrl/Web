@@ -10,4 +10,5 @@ type User struct {
 	BirthDate    time.Time
 	PasswordHash string
 	CreatedAt    time.Time
+	Balance      int64
 }

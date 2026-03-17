@@ -1,6 +1,8 @@
 package main
 
 import (
+	"Web/user-service/internal/service"
+	"Web/user-service/internal/usecase"
 	userpb "Web/user-service/protos/gen/go"
 	"log"
 	"net"
@@ -10,9 +12,9 @@ import (
 	"Web/user-service/internal/database"
 	"Web/user-service/internal/grpc"
 	"Web/user-service/internal/repository"
-	"Web/user-service/internal/service"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
@@ -28,7 +30,14 @@ func main() {
 
 	jwtManager := auth.NewJWTManager(cfg.JWTSecret)
 
-	userService := service.NewUserService(repo, jwtManager)
+	conn, err := grpc.Dial(
+		"localhost:50052",
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+
+	walletService := service.NewWalletService(conn)
+
+	userService := usecase.NewUserService(repo, jwtManager, walletService)
 
 	authInterceptor := grpcserver.NewAuthInterceptor(jwtManager)
 

@@ -1,9 +1,10 @@
 package grpcserver
 
 import (
-	"Web/user-service/internal/service"
+	"Web/user-service/internal/usecase"
 	"Web/user-service/protos/gen/go"
 	"context"
+	"log"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -11,10 +12,10 @@ import (
 
 type Server struct {
 	userpb.UnimplementedUserServiceServer
-	service *service.UserService
+	service *usecase.UserService
 }
 
-func NewServer(s *service.UserService) *Server {
+func NewServer(s *usecase.UserService) *Server {
 	return &Server{service: s}
 }
 
@@ -32,6 +33,8 @@ func (s *Server) Register(ctx context.Context, req *userpb.RegisterRequest) (*us
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	log.Println(req)
+
 	return &userpb.AuthResponse{Token: token}, nil
 }
 
@@ -45,7 +48,7 @@ func (s *Server) GetProfile(
 		return nil, status.Error(codes.Unauthenticated, "user not authenticated")
 	}
 
-	user, err := s.service.GetProfile(ctx, userID)
+	user, balance, err := s.service.GetProfile(ctx, userID)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, "user not found")
 	}
@@ -56,6 +59,7 @@ func (s *Server) GetProfile(
 		FirstName: user.FirstName,
 		LastName:  user.LastName,
 		BirthDate: user.BirthDate.Format("2006-01-02"),
+		Balance:   int64(balance),
 	}, nil
 }
 

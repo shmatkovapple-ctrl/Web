@@ -19,9 +19,9 @@ func NewPostgresRepo(db *pgxpool.Pool) *PostgresRepo {
 func (r *PostgresRepo) Create(ctx context.Context, u *models.User) (int, error) {
 	var id int
 	err := r.db.QueryRow(ctx,
-		`INSERT INTO users (first_name, last_name, birth_date, password_hash, login) 
+		`INSERT INTO users (login, first_name, last_name, birth_date, password_hash) 
 			 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-		u.FirstName, u.LastName, u.BirthDate, u.PasswordHash, u.Login).Scan(&id)
+		u.Login, u.FirstName, u.LastName, u.BirthDate, u.PasswordHash).Scan(&id)
 	if err != nil {
 		log.Println("DB ERROR:", err)
 	}
@@ -56,4 +56,9 @@ func (r *PostgresRepo) GetById(ctx context.Context, id int) (*models.User, error
 		return nil, err
 	}
 	return u, nil
+}
+
+func (r *PostgresRepo) Delete(ctx context.Context, id int) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
+	return err
 }
